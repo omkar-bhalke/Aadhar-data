@@ -6,10 +6,7 @@ const fs = require('fs');
 const CryptoJS = require('crypto-js');
 
 const app = express();
-const PORT = 3000;
-
-
-
+const PORT = process.env.PORT || 3000; // Railway fix
 
 const ENCRYPTION_KEY = "nic@impds#dedup05613";
 
@@ -27,10 +24,6 @@ function decryptAadhaar(encryptedText) {
     return bytes.toString(CryptoJS.enc.Utf8);
 }
 
-
-
-
-
 function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
   return new Promise((resolve, reject) => {
     console.log('🔄 Getting fresh JSESSIONID...');
@@ -41,12 +34,35 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
       let stdout = '';
       let stderr = '';
 
+      // ERROR HANDLER — python3 not found ya file missing hone pe crash nahi hoga
+      pythonProcess.on('error', (spawnErr) => {
+        console.log('⚠️ python3 spawn failed:', spawnErr.message);
+        // session.txt fallback
+        try {
+          if (fs.existsSync('session.txt')) {
+            const sessionId = fs.readFileSync('session.txt', 'utf8').trim();
+            if (sessionId && sessionId.length > 10) {
+              currentJSESSIONID = sessionId;
+              sessionLastUpdated = new Date();
+              console.log(`✅ JSESSIONID from file: ${currentJSESSIONID}`);
+              return resolve(currentJSESSIONID);
+            }
+          }
+        } catch (e) {
+          console.error('session.txt read error:', e);
+        }
+        if (retryCount < maxRetries) {
+          console.log(`🔄 Retrying in ${retryDelay/1000}s... (${retryCount + 1}/${maxRetries})`);
+          setTimeout(() => attemptLogin(retryCount + 1), retryDelay);
+        } else {
+          reject(new Error('python3 not available and no valid session.txt'));
+        }
+      });
+
       pythonProcess.stdout.on('data', (data) => {
         stdout += data.toString();
         console.log(data.toString().trim());
       });
-
-
 
       pythonProcess.stderr.on('data', (data) => {
         stderr += data.toString();
@@ -54,7 +70,6 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
       });
 
       pythonProcess.on('close', (code) => {
-
         const jsessionMatch = stdout.match(/JSESSIONID: ([A-F0-9]+)/);
         if (jsessionMatch && jsessionMatch[1]) {
           currentJSESSIONID = jsessionMatch[1];
@@ -63,8 +78,6 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
           resolve(currentJSESSIONID);
           return;
         }
-
-
 
         try {
           if (fs.existsSync('session.txt')) {
@@ -81,8 +94,6 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
           console.error('Error reading session file:', error);
         }
 
-
-
         if (retryCount < maxRetries) {
           console.log(`🔄 Login failed, retrying in ${retryDelay/1000} seconds... (${retryCount + 1}/${maxRetries})`);
           setTimeout(() => attemptLogin(retryCount + 1), retryDelay);
@@ -96,22 +107,15 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
   });
 }
 
-
-
 function needsSessionRefresh() {
   if (!currentJSESSIONID || !sessionLastUpdated) return true;
-
   const now = new Date();
   const diffMinutes = (now - sessionLastUpdated) / (1000 * 60);
-  return diffMinutes > 30; 
-
+  return diffMinutes > 30;
 }
-
-
 
 async function ensureValidSession() {
   if (isRefreshingSession) {
-
     return new Promise((resolve) => {
       sessionRefreshQueue.push(resolve);
     });
@@ -121,13 +125,9 @@ async function ensureValidSession() {
     isRefreshingSession = true;
     console.log('🔄 Session needs refresh, getting new JSESSIONID...');
 
-
-
     try {
       await getFreshJSESSIONID();
       console.log('✅ Session refreshed successfully');
-
-
 
       while (sessionRefreshQueue.length > 0) {
         const resolve = sessionRefreshQueue.shift();
@@ -136,14 +136,9 @@ async function ensureValidSession() {
     } catch (error) {
       console.error('❌ Failed to refresh session:', error);
 
-
-
       while (sessionRefreshQueue.length > 0) {
         const resolve = sessionRefreshQueue.shift();
-        resolve(); 
-
-
-
+        resolve();
       }
       throw error;
     } finally {
@@ -151,8 +146,6 @@ async function ensureValidSession() {
     }
   }
 }
-
-
 
 function parseSearchResults(html) {
   const $ = cheerio.load(html);
@@ -164,16 +157,12 @@ function parseSearchResults(html) {
     return { error: 'No valid data found in response' };
   }
 
-
-
   const mainTable = tables.first();
   const rows = mainTable.find('tbody tr');
 
   if (rows.length === 0) {
     return { error: 'No records found' };
   }
-
-
 
   const rationCardMap = {};
 
@@ -204,16 +193,11 @@ function parseSearchResults(html) {
     }
   });
 
-
-
   const finalResults = Object.values(rationCardMap).map(card => {
-
     const additionalInfoTable = tables.eq(1);
     card.additional_info = parseAdditionalInfo(additionalInfoTable);
     return card;
   });
-
-
 
   return finalResults;
 }
@@ -227,8 +211,6 @@ function parseAdditionalInfo(table) {
     duplicate_aadhaar_beneficiary: false
   };
 
-
-
   const rows = table.find('tbody tr');
 
   rows.each((index, row) => {
@@ -236,8 +218,6 @@ function parseAdditionalInfo(table) {
     if (tds.length >= 2) {
       const label = $(tds[0]).text().trim();
       const value = $(tds[1]).text().trim().toLowerCase();
-
-
 
       if (label.includes('FPS category')) {
         info.fps_category = value === 'yes' ? 'Online FPS' : 'Offline FPS';
@@ -259,7 +239,6 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
     const maxRetries = 3;
 
     try {
-
       await ensureValidSession();
     } catch (error) {
       return callback(error, null, null);
@@ -270,9 +249,9 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
       'aadhar': encryptedAadhaar
     };
 
-    request.post({  
-      url: 'https://impds.nic.in/impdsdeduplication/search',  
-      headers: {  
+    request.post({
+      url: 'https://impds.nic.in/impdsdeduplication/search',
+      headers: {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br, zstd',
@@ -291,28 +270,24 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
         'accept-language': 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6,zh-CN;q=0.5,zh;q=0.4,de;q=0.3',
         'priority': 'u=0, i',
         'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentJSESSIONID}`
-      },  
+      },
       form: formData,
-      timeout: 30000 
-
-    }, (err, response, body) => {  
+      timeout: 30000
+    }, (err, response, body) => {
       if (err) {
         console.error('Aadhaar search request error:', err);
         return callback(err, null, null);
       }
 
-      const isSessionExpired = response.statusCode === 500 || 
-          (body && (body.includes('Login Page') || 
+      const isSessionExpired = response.statusCode === 500 ||
+          (body && (body.includes('Login Page') ||
                    body.includes('UserLogin') ||
                    body.includes('REQ_CSRF_TOKEN')));
 
       if (isSessionExpired) {
         console.log('🔐 Session expired detected in Aadhaar search');
 
-
-
         if (retryCount < maxRetries) {
-
           sessionLastUpdated = null;
           console.log(`🔄 Retrying Aadhaar search with fresh session... (${retryCount + 1}/${maxRetries})`);
 
@@ -330,21 +305,20 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
       }
 
       callback(null, response, body);
-    });  
+    });
   };
 
   attemptRequest();
 }
 
 app.get('/search-aadhaar', (req, res) => {
-  const search = req.query.search || 'A'; 
-
+  const search = req.query.search || 'A';
   const aadhaar = req.query.aadhaar;
 
   if (!aadhaar) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Missing aadhaar parameter' 
+    return res.status(400).json({
+      success: false,
+      error: 'Missing aadhaar parameter'
     });
   }
 
@@ -352,19 +326,15 @@ app.get('/search-aadhaar', (req, res) => {
 
   let encryptedAadhaar;
   try {
-
     const decrypted = decryptAadhaar(aadhaar);
-
     if (decrypted && decrypted.length > 0) {
-      encryptedAadhaar = aadhaar; 
-
+      encryptedAadhaar = aadhaar;
       console.log('✅ Using already encrypted Aadhaar');
     } else {
       encryptedAadhaar = encryptAadhaar(aadhaar);
       console.log('🔐 Encrypted Aadhaar for request');
     }
   } catch (error) {
-
     encryptedAadhaar = encryptAadhaar(aadhaar);
     console.log('🔐 Encrypted plain text Aadhaar');
   }
@@ -372,14 +342,13 @@ app.get('/search-aadhaar', (req, res) => {
   makeAadhaarSearchRequest(search, encryptedAadhaar, (err, response, body) => {
     if (err) {
       console.error('❌ Aadhaar search failed:', err.message);
-      return res.status(500).json({ 
-        success: false, 
-        error: err.message 
+      return res.status(500).json({
+        success: false,
+        error: err.message
       });
     }
 
     try {
-
       const parsedResults = parseSearchResults(body);
 
       if (parsedResults.error) {
@@ -398,17 +367,16 @@ app.get('/search-aadhaar', (req, res) => {
       console.log(`✅ Aadhaar search completed. Found ${parsedResults.length} ration card(s)`);
     } catch (parseError) {
       console.error('❌ HTML parsing error in search results:', parseError);
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Failed to parse search results' 
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to parse search results'
       });
     }
   });
 });
 
 app.get('/crypto', (req, res) => {
-  const action = req.query.action; 
-
+  const action = req.query.action;
   const text = req.query.text;
 
   if (!action || !text) {
@@ -502,5 +470,3 @@ async function initializeServer() {
 }
 
 initializeServer();
-
-
