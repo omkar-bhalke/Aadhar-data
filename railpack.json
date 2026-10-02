@@ -8,12 +8,13 @@
   "steps": {
     "install": {
       "commands": [
-        "npm install",
+        "...",
+        { "src": "requirements.txt", "dest": "requirements.txt" },
         "pip install -r requirements.txt --break-system-packages"
       ]
     }
   },
   "deploy": {
-    "aptPackages": ["tesseract-ocr"]
+    "aptPackages": ["...", "tesseract-ocr"]
   }
 }
