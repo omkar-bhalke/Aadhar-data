@@ -10,7 +10,7 @@
       "commands": [
         "...",
         { "src": "requirements.txt", "dest": "requirements.txt" },
-        "pip install -r requirements.txt --break-system-packages"
+        "pip install -r requirements.txt --break-system-packages --target=./pylibs"
       ]
     }
   },

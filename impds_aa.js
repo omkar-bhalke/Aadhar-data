@@ -3,7 +3,16 @@ const request = require('request');
 const cheerio = require('cheerio');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 const CryptoJS = require('crypto-js');
+
+// pip installs (requests, bs4, pytesseract, Pillow) go into ./pylibs at build time
+// (see railpack.json) since the mise-managed Python's own site-packages don't
+// reliably survive into the deploy image. Point python3 at that folder explicitly.
+const PY_ENV = {
+  ...process.env,
+  PYTHONPATH: path.join(__dirname, 'pylibs') + (process.env.PYTHONPATH ? `:${process.env.PYTHONPATH}` : '')
+};
 
 const app = express();
 const PORT = process.env.PORT || 3000; // Railway fix
@@ -29,7 +38,7 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
     console.log('🔄 Getting fresh JSESSIONID...');
 
     const attemptLogin = (retryCount = 0) => {
-      const pythonProcess = spawn('python3', ['impds_auth.py']);
+      const pythonProcess = spawn('python3', ['impds_auth.py'], { env: PY_ENV });
 
       let stdout = '';
       let stderr = '';
