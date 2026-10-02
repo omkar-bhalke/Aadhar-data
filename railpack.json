@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "20",
+    "python": "3.11"
+  },
+  "steps": {
+    "install": {
+      "commands": [
+        "npm install",
+        "pip install -r requirements.txt --break-system-packages"
+      ]
+    }
+  },
+  "deploy": {
+    "aptPackages": ["tesseract-ocr"]
+  }
+}

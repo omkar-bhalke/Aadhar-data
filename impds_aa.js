@@ -33,9 +33,19 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
 
       let stdout = '';
       let stderr = '';
+      let timedOut = false;
+
+      // Safety net — agar python kisi wajah se hang ho jaye (e.g. OCR/captcha stuck),
+      // isse process ko force-kill karke retry chain aage badhti rahegi.
+      const killTimer = setTimeout(() => {
+        timedOut = true;
+        console.log('⏱️ python3 impds_auth.py timed out, killing process...');
+        pythonProcess.kill('SIGKILL');
+      }, 45000);
 
       // ERROR HANDLER — python3 not found ya file missing hone pe crash nahi hoga
       pythonProcess.on('error', (spawnErr) => {
+        clearTimeout(killTimer);
         console.log('⚠️ python3 spawn failed:', spawnErr.message);
         // session.txt fallback
         try {
@@ -70,6 +80,10 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
       });
 
       pythonProcess.on('close', (code) => {
+        clearTimeout(killTimer);
+        if (timedOut) {
+          console.log('⚠️ python3 process was killed due to timeout');
+        }
         const jsessionMatch = stdout.match(/JSESSIONID: ([A-F0-9]+)/);
         if (jsessionMatch && jsessionMatch[1]) {
           currentJSESSIONID = jsessionMatch[1];
