@@ -1,10 +1,3 @@
-# Repo folder mein jao
-cd Aadhar-data
-
-# package.json banao (guide wala content paste karo)
-# ... ya seedha:
-
-cat > package.json << 'EOF'
 {
   "name": "impds-aadhaar-api",
   "version": "1.0.0",
@@ -19,8 +12,3 @@ cat > package.json << 'EOF'
     "crypto-js": "^4.2.0"
   }
 }
-EOF
-
-git add package.json
-git commit -m "fix: add package.json for Railway build"
-git push
