@@ -309,6 +309,7 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
 
       if (isSessionExpired) {
         console.log('🔐 Session expired detected in Aadhaar search');
+        console.log(`🧪 Diagnostic — status=${response.statusCode}, body snippet: ${(body || '').substring(0, 300).replace(/\s+/g, ' ')}`);
 
         if (retryCount < maxRetries) {
           sessionLastUpdated = null;

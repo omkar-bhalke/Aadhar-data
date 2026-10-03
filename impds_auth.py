@@ -78,11 +78,35 @@ class IMPDSAutomation:
         try:  
             image_data = base64.b64decode(captcha_base64)  
             image = Image.open(io.BytesIO(image_data))  
-            image = image.convert('L')  # grayscale for better OCR  
-            text = pytesseract.image_to_string(image, config="--psm 7").strip()  
-            clean_text = ''.join(filter(str.isalnum, text.upper()))  
-            print(f"[+] OCR Captcha Read: {clean_text}")  
-            return clean_text  
+            image = image.convert('L')  # grayscale  
+
+            # Upscale — tesseract reads small/noisy captcha fonts much better at 3-4x size  
+            scale = 4  
+            image = image.resize((image.width * scale, image.height * scale), Image.LANCZOS)  
+
+            # Binarize (simple fixed threshold; captchas are usually dark text on light bg)  
+            image = image.point(lambda p: 255 if p > 140 else 0)  
+
+            candidates = []  
+            for psm in (7, 8, 13):  
+                try:  
+                    config = f"--psm {psm} -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"  
+                    text = pytesseract.image_to_string(image, config=config).strip()  
+                    clean_text = ''.join(filter(str.isalnum, text.upper()))  
+                    if clean_text:  
+                        candidates.append(clean_text)  
+                except Exception:  
+                    continue  
+
+            if not candidates:  
+                print("[-] OCR produced no candidates")  
+                return None  
+
+            # Prefer a result in the typical 4-6 char captcha length range; else take the longest  
+            typical = [c for c in candidates if 4 <= len(c) <= 6]  
+            best = typical[0] if typical else max(candidates, key=len)  
+            print(f"[+] OCR candidates: {candidates} -> chosen: {best}")  
+            return best  
         except Exception as e:  
             print("[-] OCR failed:", e)  
             return None  
