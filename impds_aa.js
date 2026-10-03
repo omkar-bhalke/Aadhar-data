@@ -257,6 +257,28 @@ function parseAdditionalInfo(table) {
   return info;
 }
 
+// The search page embeds a fresh, single-use REQ_CSRF_TOKEN hidden input that
+// must be submitted along with the search form, same as the login page does.
+// Without it the server throws a generic 500 (not actually a session issue).
+function fetchSearchPageCsrfToken(callback) {
+  request.get({
+    url: 'https://impds.nic.in/impdsdeduplication/search',
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentJSESSIONID}`
+    },
+    timeout: 15000
+  }, (err, response, body) => {
+    if (err) return callback(err, null);
+    const $ = cheerio.load(body || '');
+    const token = $('input[name="REQ_CSRF_TOKEN"]').attr('value');
+    if (!token) {
+      return callback(new Error('Could not find REQ_CSRF_TOKEN on search page'), null);
+    }
+    callback(null, token);
+  });
+}
+
 function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
   const attemptRequest = async (retryCount = 0) => {
     const maxRetries = 3;
@@ -267,9 +289,25 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
       return callback(error, null, null);
     }
 
+    let csrfToken;
+    try {
+      csrfToken = await new Promise((resolve, reject) => {
+        fetchSearchPageCsrfToken((err, token) => err ? reject(err) : resolve(token));
+      });
+    } catch (csrfErr) {
+      console.log(`⚠️ Could not fetch search-page CSRF token: ${csrfErr.message}`);
+      if (retryCount < maxRetries) {
+        sessionLastUpdated = null;
+        setTimeout(() => attemptRequest(retryCount + 1), 2000);
+        return;
+      }
+      return callback(csrfErr, null, null);
+    }
+
     const formData = {
       'search': searchTerm,
-      'aadhar': encryptedAadhaar
+      'aadhar': encryptedAadhaar,
+      'REQ_CSRF_TOKEN': csrfToken
     };
 
     request.post({
