@@ -131,7 +131,7 @@ class IMPDSAutomation:
             print("[-] Call get_login_page() first.")  
             return False  
   
-        username = "dsojpnagar@gmail.com"  
+        username = "dsoojpnagar@gmail.com"  
         password = "CHCAEsoK"  
 
 
