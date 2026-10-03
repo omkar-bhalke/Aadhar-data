@@ -271,8 +271,17 @@ function fetchSearchPageCsrfToken(callback) {
   }, (err, response, body) => {
     if (err) return callback(err, null);
     const $ = cheerio.load(body || '');
-    const token = $('input[name="REQ_CSRF_TOKEN"]').attr('value');
+    let token = $('input[name="REQ_CSRF_TOKEN"]').attr('value');
+
+    // Fall back to common Spring Security meta-tag pattern if the hidden
+    // input isn't present on this particular page.
     if (!token) {
+      token = $('meta[name="_csrf"]').attr('content') || $('meta[name="csrf-token"]').attr('content');
+    }
+
+    if (!token) {
+      console.log(`🧪 CSRF diagnostic — GET ${response.statusCode}, final url: ${response.request && response.request.href}`);
+      console.log(`🧪 CSRF diagnostic — body snippet: ${(body || '').substring(0, 500).replace(/\s+/g, ' ')}`);
       return callback(new Error('Could not find REQ_CSRF_TOKEN on search page'), null);
     }
     callback(null, token);
