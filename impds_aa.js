@@ -283,8 +283,11 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
   const attemptRequest = async (retryCount = 0) => {
     const maxRetries = 3;
 
+    // Per request: always log in fresh for every single Aadhaar search,
+    // instead of reusing/caching a session across requests.
     try {
-      await ensureValidSession();
+      console.log('🔄 Forcing fresh login for this request (no session reuse)...');
+      await getFreshJSESSIONID();
     } catch (error) {
       return callback(error, null, null);
     }
