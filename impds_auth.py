@@ -160,12 +160,19 @@ class IMPDSAutomation:
                 return False  
             else:  
                 print("[+] Login successful!")  
-                jsessionid = self.session.cookies.get('JSESSIONID')  
+                all_cookies = self.session.cookies.get_dict()  
+                print(f"[+] All cookies after login: {all_cookies}")  
+                jsessionid = all_cookies.get('JSESSIONID')  
+                pds_session_id = all_cookies.get('PDS_SESSION_ID')  
                 if jsessionid:  
                     print(f"[+] JSESSIONID: {jsessionid}")  
+                    if pds_session_id and pds_session_id != jsessionid:  
+                        print(f"[+] PDS_SESSION_ID (distinct!): {pds_session_id}")  
+                    else:  
+                        pds_session_id = jsessionid  
                     with open("session.txt", "w") as f:  
-                        f.write(jsessionid)  
-                    print("[+] Saved JSESSIONID to session.txt")  
+                        f.write(f"{jsessionid}\n{pds_session_id}")  
+                    print("[+] Saved session to session.txt")  
                     return jsessionid  
                 else:  
                     print("[-] JSESSIONID not found")  

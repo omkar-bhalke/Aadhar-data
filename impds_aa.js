@@ -20,9 +20,20 @@ const PORT = process.env.PORT || 3000; // Railway fix
 const ENCRYPTION_KEY = "nic@impds#dedup05613";
 
 let currentJSESSIONID = null;
+let currentPDSSESSIONID = null; // may differ from JSESSIONID — don't assume they're the same
 let sessionLastUpdated = null;
 let isRefreshingSession = false;
 let sessionRefreshQueue = [];
+
+// session.txt format: line 1 = JSESSIONID, line 2 (optional) = PDS_SESSION_ID.
+// If line 2 is missing/blank, falls back to using the JSESSIONID value for both.
+function readSessionFile() {
+  const raw = fs.readFileSync('session.txt', 'utf8');
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  const jsessionid = lines[0] || '';
+  const pdsSessionId = lines[1] || jsessionid;
+  return { jsessionid, pdsSessionId };
+}
 
 function encryptAadhaar(text) {
     return CryptoJS.AES.encrypt(text, ENCRYPTION_KEY).toString();
@@ -59,9 +70,10 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
         // session.txt fallback
         try {
           if (fs.existsSync('session.txt')) {
-            const sessionId = fs.readFileSync('session.txt', 'utf8').trim();
-            if (sessionId && sessionId.length > 10) {
-              currentJSESSIONID = sessionId;
+            const { jsessionid, pdsSessionId } = readSessionFile();
+            if (jsessionid && jsessionid.length > 10) {
+              currentJSESSIONID = jsessionid;
+              currentPDSSESSIONID = pdsSessionId;
               sessionLastUpdated = new Date();
               console.log(`✅ JSESSIONID from file: ${currentJSESSIONID}`);
               return resolve(currentJSESSIONID);
@@ -93,20 +105,23 @@ function getFreshJSESSIONID(maxRetries = 5, retryDelay = 3000) {
         if (timedOut) {
           console.log('⚠️ python3 process was killed due to timeout');
         }
-        const jsessionMatch = stdout.match(/JSESSIONID: ([A-F0-9]+)/);
+        const jsessionMatch = stdout.match(/\[\+\] JSESSIONID: ([A-F0-9]+)/);
         if (jsessionMatch && jsessionMatch[1]) {
           currentJSESSIONID = jsessionMatch[1];
+          const pdsMatch = stdout.match(/PDS_SESSION_ID \(distinct!\): ([A-F0-9]+)/);
+          currentPDSSESSIONID = pdsMatch ? pdsMatch[1] : currentJSESSIONID;
           sessionLastUpdated = new Date();
-          console.log(`✅ New JSESSIONID obtained: ${currentJSESSIONID}`);
+          console.log(`✅ New JSESSIONID obtained: ${currentJSESSIONID}${pdsMatch ? ` (distinct PDS_SESSION_ID: ${currentPDSSESSIONID})` : ''}`);
           resolve(currentJSESSIONID);
           return;
         }
 
         try {
           if (fs.existsSync('session.txt')) {
-            const sessionId = fs.readFileSync('session.txt', 'utf8').trim();
-            if (sessionId && sessionId.length > 10) {
-              currentJSESSIONID = sessionId;
+            const { jsessionid, pdsSessionId } = readSessionFile();
+            if (jsessionid && jsessionid.length > 10) {
+              currentJSESSIONID = jsessionid;
+              currentPDSSESSIONID = pdsSessionId;
               sessionLastUpdated = new Date();
               console.log(`✅ JSESSIONID from file: ${currentJSESSIONID}`);
               resolve(currentJSESSIONID);
@@ -265,7 +280,7 @@ function fetchSearchPageCsrfToken(callback) {
     url: 'https://impds.nic.in/impdsdeduplication/search',
     headers: {
       'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentJSESSIONID}`
+      'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentPDSSESSIONID || currentJSESSIONID}`
     },
     timeout: 15000
   }, (err, response, body) => {
@@ -342,7 +357,7 @@ function makeAadhaarSearchRequest(searchTerm, encryptedAadhaar, callback) {
         'referer': 'https://impds.nic.in/impdsdeduplication/search',
         'accept-language': 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6,zh-CN;q=0.5,zh;q=0.4,de;q=0.3',
         'priority': 'u=0, i',
-        'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentJSESSIONID}`
+        'Cookie': `JSESSIONID=${currentJSESSIONID}; PDS_SESSION_ID=${currentPDSSESSIONID || currentJSESSIONID}`
       },
       form: formData,
       timeout: 30000
